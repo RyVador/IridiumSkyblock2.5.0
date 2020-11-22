@@ -43,6 +43,7 @@ public class Messages {
     public String teleportingHome = "%prefix% &7Teleporting home...";
     public String playerInvited = "%prefix% &7You have invited a player to join your island.";
     public String invitedByPlayer = "%prefix% &7You have been invited to join %player%'s island.";
+    public String inviteHoverMessage = "%prefix% Click to join players island!";
     public String leftIsland = "%prefix% &7You have left your island.";
     public String biomeChanged = "%prefix% &7%player% changed your island's biome to %biome%";
     public String biomePurchased = "%prefix% &7You purchased %biome% Biome for $%money%";
