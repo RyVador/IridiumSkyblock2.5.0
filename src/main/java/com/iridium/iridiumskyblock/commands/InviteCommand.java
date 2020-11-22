@@ -75,7 +75,8 @@ public class InviteCommand extends Command {
 
             ClickEvent clickEvent = new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/is join " + player
                 .getName());
-            HoverEvent hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("Click to join players island!").create());
+            HoverEvent hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(IridiumSkyblock.getMessages().inviteHoverMessage
+                                                                                                    .replace("%prefix%", IridiumSkyblock.getCongiuration().prefix).create());
             for (BaseComponent component : components) {
                 component.setClickEvent(clickEvent);
                 component.setHoverEvent(hoverEvent);
