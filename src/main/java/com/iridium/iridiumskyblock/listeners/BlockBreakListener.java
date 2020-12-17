@@ -3,10 +3,12 @@ package com.iridium.iridiumskyblock.listeners;
 import com.cryptomorin.xseries.XMaterial;
 import com.iridium.iridiumskyblock.*;
 import com.iridium.iridiumskyblock.configs.Missions;
+import com.iridium.iridiumskyblock.managers.IslandManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -25,8 +27,7 @@ public class BlockBreakListener implements Listener {
             if (event.isCancelled()) return;
             final Block block = event.getBlock();
             final Location location = block.getLocation();
-            final IslandManager islandManager = IridiumSkyblock.getIslandManager();
-            final Island island = islandManager.getIslandViaLocation(location);
+            final Island island = IslandManager.getIslandViaLocation(location);
             if (island == null) return;
 
             final Player player = event.getPlayer();
@@ -75,20 +76,30 @@ public class BlockBreakListener implements Listener {
     public void onMonitorBreakBlock(BlockBreakEvent event) {
         try {
             final Block block = event.getBlock();
+            final BlockState blockState = block.getState();
             final Location location = block.getLocation();
-            final IslandManager islandManager = IridiumSkyblock.getIslandManager();
-            final Island island = islandManager.getIslandViaLocation(location);
+            final Island island = IslandManager.getIslandViaLocation(location);
             if (island == null) return;
 
-            if (Utils.isBlockValuable(block)) {
-                final Material material = block.getType();
-                final String materialName = XMaterial.matchXMaterial(material).name();
-                island.valuableBlocks.computeIfPresent(materialName, (name, original) -> original - 1);
-
+            final XMaterial xmaterial = XMaterial.matchXMaterial(block.getType());
+            if (Utils.isBlockValuable(block) || IridiumSkyblock.getConfiguration().limitedBlocks.containsKey(xmaterial)) {
+                island.valuableBlocks.computeIfPresent(xmaterial.name(), (name, original) -> original - 1);
                 Bukkit.getScheduler().runTask(IridiumSkyblock.getInstance(), island::calculateIslandValue);
             }
 
             island.failedGenerators.remove(location);
+
+            if (island.stackedBlocks.containsKey(location)) {
+                if (island.stackedBlocks.get(location) == 2) {
+                    island.stackedBlocks.remove(location);
+                } else {
+                    island.stackedBlocks.compute(location, (loc, original) -> original - 1);
+                }
+                //This needs to be ran a tick later since blockbreakevent gets called before the block gets removed
+                Bukkit.getScheduler().runTask(IridiumSkyblock.getInstance(), () -> blockState.update(true, true));
+                island.sendHomograms();
+            }
+
         } catch (Exception e) {
             IridiumSkyblock.getInstance().sendErrorMessage(e);
         }

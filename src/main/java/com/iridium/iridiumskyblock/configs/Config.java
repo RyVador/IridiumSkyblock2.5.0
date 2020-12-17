@@ -7,10 +7,7 @@ import com.iridium.iridiumskyblock.Permissions;
 import com.iridium.iridiumskyblock.Role;
 import org.bukkit.entity.EntityType;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class Config {
@@ -27,16 +24,18 @@ public class Config {
     public String billionAbbreviation = "B";
     public String mainCommandPerm = "";
     public boolean createCooldown = true;
-    public boolean doIslandBackup = true;
+    public boolean bankWithdrawing = true;
     public boolean islandShop = true;
     public boolean automaticUpdate = true;
     public boolean defaultIslandPublic = true;
     public boolean netherIslands = true;
+    public boolean publicNetherPortals = true;
     public boolean forceShortPortalRadius = true;
     public boolean islandMenu = true;
     public boolean voidTeleport = true;
     public boolean notifyAvailableUpdate = true;
     public boolean clearInventories = false;
+    public boolean clearEnderChests = false;
     public boolean restartUpgradesOnRegen = true;
     public boolean allowWaterInNether = true;
     public boolean createIslandonHome = true;
@@ -52,10 +51,14 @@ public class Config {
     public boolean keepInventoryOnVoid = true;
     public boolean createIslandOnJoin = false;
     public boolean ignoreCooldownOnJoinCreation = false;
+    public boolean enableBlockStacking = true;
+    public boolean stripTopIslandPlaceholderColors = true;
+    public boolean denyNaturalSpawnWhitelist = false;
     public int deleteBackupsAfterDays = 7;
     public int regenCooldown = 3600;
     public int distance = 151;
-    public int backupIntervalMinutes = 60;
+    public int maxIslandName = 16;
+    public int minIslandName = 3;
     public int valueUpdateInterval = 20 * 30;
     public int playersOnIslandRefreshTime = 15;
     public int intervalBetweenMobTarget = 15;
@@ -105,6 +108,8 @@ public class Config {
         }
     }};
     public List<EntityType> blockedEntities = Arrays.asList(EntityType.PRIMED_TNT, EntityType.MINECART_TNT, EntityType.FIREBALL, EntityType.SMALL_FIREBALL, EntityType.ENDER_PEARL);
+
+    public List<EntityType> denyNaturalSpawn = Collections.singletonList(EntityType.PHANTOM);
 
     public static class BiomeConfig {
         public double price = 5000.0;

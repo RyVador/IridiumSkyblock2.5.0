@@ -26,8 +26,8 @@ public class WarpGUI extends GUI implements Listener {
     public void addContent() {
         super.addContent();
         if (getInventory().getViewers().isEmpty()) return;
-        if (IridiumSkyblock.getIslandManager().islands.containsKey(islandID)) {
-            Island island = IridiumSkyblock.getIslandManager().islands.get(islandID);
+        if (getIsland()!=null) {
+            Island island = getIsland();
             int i = 9;
             warps.clear();
             for (Island.Warp warp : island.getWarps()) {
@@ -48,7 +48,11 @@ public class WarpGUI extends GUI implements Listener {
             e.setCancelled(true);
             if (e.getClickedInventory() == null || !e.getClickedInventory().equals(getInventory())) return;
             if (e.getSlot() == getInventory().getSize() - 5 && IridiumSkyblock.getInventories().backButtons) {
-                e.getWhoClicked().openInventory(getIsland().getIslandMenuGUI().getInventory());
+                if (User.getUser((Player) e.getWhoClicked()).getIsland() != null) {
+                    e.getWhoClicked().openInventory(User.getUser((Player) e.getWhoClicked()).getIsland().getIslandMenuGUI().getInventory());
+                } else {
+                    e.getWhoClicked().closeInventory();
+                }
             }
             if (warps.containsKey(e.getSlot())) {
                 Island.Warp warp = warps.get(e.getSlot());

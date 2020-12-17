@@ -4,6 +4,7 @@ import com.iridium.iridiumskyblock.IridiumSkyblock;
 import com.iridium.iridiumskyblock.User;
 import com.iridium.iridiumskyblock.Utils;
 import com.iridium.iridiumskyblock.configs.Schematics;
+import com.iridium.iridiumskyblock.managers.IslandManager;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -69,8 +70,10 @@ public class CommandManager implements CommandExecutor, TabCompleter {
         registerCommand(IridiumSkyblock.getCommands().languagesCommand);
         registerCommand(IridiumSkyblock.getCommands().recalculateCommand);
         registerCommand(IridiumSkyblock.getCommands().removeValueCommand);
+        registerCommand(IridiumSkyblock.getCommands().resetCrystalsCommand);
         registerCommand(IridiumSkyblock.getCommands().addValueCommand);
         registerCommand(IridiumSkyblock.getCommands().expelCommand);
+        registerCommand(IridiumSkyblock.getCommands().purgeCommand);
     }
 
     public void registerCommand(com.iridium.iridiumskyblock.commands.Command command) {
@@ -84,8 +87,8 @@ public class CommandManager implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender cs, Command cmd, String s, String[] args) {
         try {
-            if(!IridiumSkyblock.getConfiguration().mainCommandPerm.equalsIgnoreCase("") && !cs.hasPermission(IridiumSkyblock.getConfiguration().mainCommandPerm)){
-                cs.sendMessage(Utils.color(IridiumSkyblock.getMessages().noPermission.replace("%prefix%",IridiumSkyblock.getConfiguration().prefix)));
+            if (!IridiumSkyblock.getConfiguration().mainCommandPerm.equalsIgnoreCase("") && !cs.hasPermission(IridiumSkyblock.getConfiguration().mainCommandPerm)) {
+                cs.sendMessage(Utils.color(IridiumSkyblock.getMessages().noPermission.replace("%prefix%", IridiumSkyblock.getConfiguration().prefix)));
                 return false;
             }
             if (args.length != 0) {
@@ -126,7 +129,7 @@ public class CommandManager implements CommandExecutor, TabCompleter {
                             u.getIsland().teleportHome(p);
                         }
                     } else {
-                        IridiumSkyblock.getIslandManager().createIsland(p);
+                        IslandManager.createIsland(p);
                     }
                     return true;
                 }

@@ -2,17 +2,15 @@ package com.iridium.iridiumskyblock.listeners;
 
 import com.iridium.iridiumskyblock.IridiumSkyblock;
 import com.iridium.iridiumskyblock.Island;
-import com.iridium.iridiumskyblock.IslandManager;
 import com.iridium.iridiumskyblock.User;
+import com.iridium.iridiumskyblock.managers.IslandManager;
 import org.bukkit.Location;
-import org.bukkit.entity.Arrow;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.Player;
-import org.bukkit.entity.Vehicle;
+import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.projectiles.ProjectileSource;
 
@@ -28,8 +26,7 @@ public class EntityDamageByEntityListener implements Listener {
         final Player player = (Player) damagee;
         final User user = User.getUser(player);
         final Location damageeLocation = damagee.getLocation();
-        final IslandManager islandManager = IridiumSkyblock.getIslandManager();
-        final Island island = islandManager.getIslandViaLocation(damageeLocation);
+        final Island island = IslandManager.getIslandViaLocation(damageeLocation);
         if (island == null) return;
 
         if (event.getCause() == EntityDamageEvent.DamageCause.VOID) return;
@@ -46,12 +43,18 @@ public class EntityDamageByEntityListener implements Listener {
         try {
             final Entity damagee = event.getEntity();
             final Location damageeLocation = damagee.getLocation();
-            final IslandManager islandManager = IridiumSkyblock.getIslandManager();
-            final Island island = islandManager.getIslandViaLocation(damageeLocation);
+            final Island island = IslandManager.getIslandViaLocation(damageeLocation);
             if (island == null) return;
 
             final Entity damager = event.getDamager();
 
+            if (damager instanceof Egg && damagee instanceof ItemFrame) {
+                Player player = (Player) ((Egg) damager).getShooter();
+                User user = User.getUser(player);
+                if (player != null && !island.getMembers().contains(player.getUniqueId().toString()) && !island.isCoop(user.getIsland())) {
+                    event.setCancelled(true);
+                }
+            }
             // Using suppliers to defer work if unnecessary
             // This includes seemingly innocuous downcast operations
             final Supplier<Player> damageePlayerSupplier = () -> (Player) damagee;
@@ -143,8 +146,7 @@ public class EntityDamageByEntityListener implements Listener {
         try {
             final Vehicle vehicle = event.getVehicle();
             final Location location = vehicle.getLocation();
-            final IslandManager islandManager = IridiumSkyblock.getIslandManager();
-            final Island island = islandManager.getIslandViaLocation(location);
+            final Island island = IslandManager.getIslandViaLocation(location);
             if (island == null) return;
 
             final Entity attacker = event.getAttacker();
@@ -157,6 +159,21 @@ public class EntityDamageByEntityListener implements Listener {
                 event.setCancelled(true);
         } catch (Exception ex) {
             IridiumSkyblock.getInstance().sendErrorMessage(ex);
+        }
+    }
+
+    @EventHandler
+    public void onHangingByEntity(HangingBreakByEntityEvent event) {
+        if (event.getRemover() instanceof Egg && event.getEntity() instanceof ItemFrame) {
+            Entity entity = event.getEntity();
+            Location location = entity.getLocation();
+            if (!IslandManager.isIslandWorld(location)) return;
+            Island island = IslandManager.getIslandViaLocation(location);
+            Player player = (Player) ((Egg) event.getRemover()).getShooter();
+            User user = User.getUser(player);
+            if (player != null && island != null && !island.getMembers().contains(player.getUniqueId().toString()) && !island.isCoop(user.getIsland())) {
+                event.setCancelled(true);
+            }
         }
     }
 }

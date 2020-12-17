@@ -12,11 +12,14 @@ import com.iridium.iridiumskyblock.configs.*;
 import com.iridium.iridiumskyblock.configs.Missions.Mission;
 import com.iridium.iridiumskyblock.configs.Missions.MissionData;
 import com.iridium.iridiumskyblock.gui.*;
-import com.iridium.iridiumskyblock.support.*;
+import com.iridium.iridiumskyblock.managers.IslandDataManager;
+import com.iridium.iridiumskyblock.managers.IslandManager;
+import com.iridium.iridiumskyblock.support.SpawnerSupport;
 import lombok.Getter;
 import lombok.Setter;
 import net.md_5.bungee.api.chat.*;
 import org.bukkit.*;
+import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.CreatureSpawner;
 import org.bukkit.entity.Entity;
@@ -70,8 +73,6 @@ public class Island {
     @Getter
     @Setter
     private Location home;
-    @Setter
-    private Location netherhome;
 
     @Getter
     private transient UpgradeGUI upgradeGUI;
@@ -143,11 +144,14 @@ public class Island {
     @Getter
     private double value;
 
+    private double lastMissionValue;
+
     @Getter
     private double extravalue;
 
     public transient ConcurrentHashMap<String, Integer> valuableBlocks;
     public transient ConcurrentHashMap<String, Integer> spawners;
+    public ConcurrentHashMap<Location, Integer> stackedBlocks;
 
     @Getter
     private final List<Warp> warps;
@@ -201,7 +205,7 @@ public class Island {
 
     private Date lastRegen;
 
-    private transient List<Player> playersOnIsland;
+    private transient Set<Player> playersOnIsland;
     private long lastPlayerCaching;
 
     private static final transient boolean ISFLAT = XMaterial.supports(13);
@@ -218,7 +222,7 @@ public class Island {
         }
     }
 
-    public Island(Player owner, Location pos1, Location pos2, Location center, Location home, Location netherhome, int id) {
+    public Island(Player owner, Location pos1, Location pos2, Location center, Location home, int id) {
         User user = User.getUser(owner);
         user.role = Role.Owner;
         this.biome = IridiumSkyblock.getConfiguration().defaultBiome;
@@ -231,7 +235,6 @@ public class Island {
         this.pos2 = pos2;
         this.center = center;
         this.home = home;
-        this.netherhome = netherhome;
         this.members = new HashSet<>(Collections.singletonList(user.player));
         this.id = id;
         spawnerBooster = 0;
@@ -244,6 +247,7 @@ public class Island {
         warpLevel = 1;
         oreLevel = 1;
         value = 0;
+        lastMissionValue = 0;
         warps = new ArrayList<>();
         startvalue = -1;
         borderColor = IridiumSkyblock.border.startingColor;
@@ -257,8 +261,8 @@ public class Island {
     }
 
     public void initBlocks() {
+        if (!getCenter().getWorld().isChunkLoaded(getCenter().getBlockX() >> 4, getCenter().getBlockZ() >> 4)) return;
         final IridiumSkyblock plugin = IridiumSkyblock.getInstance();
-        final IslandManager manager = IridiumSkyblock.getIslandManager();
         final boolean nether = IridiumSkyblock.getConfiguration().netherIslands;
 
         int minx = pos1.getChunk().getX();
@@ -269,6 +273,18 @@ public class Island {
         valuableBlocks.clear();
         spawners.clear();
 
+        for (Location location : stackedBlocks.keySet()) {
+            XMaterial xMaterial = XMaterial.matchXMaterial(location.getBlock().getType());
+            valuableBlocks.compute(xMaterial.name(), (xmaterialName, original) -> {
+                if (original == null) return stackedBlocks.get(location) - 1;
+                return original + (stackedBlocks.get(location) - 1);
+            });
+            if (xMaterial == XMaterial.AIR || xMaterial == XMaterial.CAVE_AIR || xMaterial == XMaterial.VOID_AIR) {
+                stackedBlocks.remove(location);
+            }
+        }
+        Bukkit.getScheduler().runTask(IridiumSkyblock.getInstance(), (Runnable) this::sendHomograms);
+
         for (int x = minx; x <= maxx; x++) {
             for (int z = minz; z <= maxz; z++) {
                 int finalX = x;
@@ -277,7 +293,7 @@ public class Island {
                 //Update the nether world values
 
                 if (nether) {
-                    Chunk netherchunk = manager.getNetherWorld().getChunkAt(x, z);
+                    Chunk netherchunk = IslandManager.getNetherWorld().getChunkAt(x, z);
                     ChunkSnapshot nethersnapshot = netherchunk.getChunkSnapshot(true, false, false);
 
                     Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
@@ -313,7 +329,7 @@ public class Island {
 
                 //Update overworld values
 
-                Chunk chunk = manager.getWorld().getChunkAt(x, z);
+                Chunk chunk = IslandManager.getWorld().getChunkAt(x, z);
                 ChunkSnapshot snapshot = chunk.getChunkSnapshot(true, false, false);
 
                 Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
@@ -355,6 +371,7 @@ public class Island {
         if (missionLevels == null) missionLevels = new HashMap<>();
         missions.clear();
         missionLevels.clear();
+        lastMissionValue = value;
     }
 
     public int getMission(String mission) {
@@ -427,11 +444,11 @@ public class Island {
         double size = IridiumSkyblock.getUpgrades().sizeUpgrade.upgrades.get(sizeLevel).size;
         if (size % 2 == 0) size++;
         String worldname = p.getLocation().getWorld().getName();
-        if (worldname.equals(IridiumSkyblock.getIslandManager().getWorld().getName())) {
+        if (worldname.equals(IslandManager.getWorld().getName())) {
             IridiumSkyblock.nms.sendWorldBorder(p, borderColor, size, getCenter());
-        } else if (IridiumSkyblock.getConfiguration().netherIslands && worldname.equals(IridiumSkyblock.getIslandManager().getNetherWorld().getName())) {
+        } else if (IridiumSkyblock.getConfiguration().netherIslands && worldname.equals(IslandManager.getNetherWorld().getName())) {
             Location loc = getCenter().clone();
-            loc.setWorld(IridiumSkyblock.getIslandManager().getNetherWorld());
+            loc.setWorld(IslandManager.getNetherWorld());
             IridiumSkyblock.nms.sendWorldBorder(p, borderColor, size, loc);
         }
     }
@@ -496,6 +513,7 @@ public class Island {
     }
 
     public void calculateIslandValue() {
+        if (!getCenter().getWorld().isChunkLoaded(getCenter().getBlockX() >> 4, getCenter().getBlockZ() >> 4)) return;
         if (valuableBlocks == null) valuableBlocks = new ConcurrentHashMap<>();
         if (spawners == null) spawners = new ConcurrentHashMap<>();
 
@@ -517,14 +535,13 @@ public class Island {
         }
 
         final Config config = IridiumSkyblock.getConfiguration();
-        final IslandManager islandManager = IridiumSkyblock.getIslandManager();
 
         final Set<World> worlds = new HashSet<>();
-        final World islandWorld = islandManager.getWorld();
+        final World islandWorld = IslandManager.getWorld();
         worlds.add(islandWorld);
 
         if (config.netherIslands) {
-            final World netherIslandWorld = islandManager.getNetherWorld();
+            final World netherIslandWorld = IslandManager.getNetherWorld();
             worlds.add(netherIslandWorld);
         }
 
@@ -544,16 +561,9 @@ public class Island {
         final Map<String, Double> spawnerValueMap = blockValues.spawnervalue;
 
         Function<CreatureSpawner, Integer> getSpawnerAmount;
-        if (Wildstacker.enabled) {
-            getSpawnerAmount = Wildstacker::getSpawnerAmount;
-        } else if (MergedSpawners.enabled) {
-            getSpawnerAmount = MergedSpawners::getSpawnerAmount;
-        } else if (UltimateStacker.enabled) {
-            getSpawnerAmount = UltimateStacker::getSpawnerAmount;
-        } else if (EpicSpawners.enabled) {
-            getSpawnerAmount = EpicSpawners::getSpawnerAmount;
-        } else if (AdvancedSpawners.enabled) {
-            getSpawnerAmount = AdvancedSpawners::getSpawnerAmount;
+        SpawnerSupport spawnerSupport = IridiumSkyblock.getInstance().getSpawnerSupport();
+        if (spawnerSupport != null) {
+            getSpawnerAmount = spawnerSupport::getSpawnerAmount;
         } else {
             getSpawnerAmount = null;
         }
@@ -597,7 +607,7 @@ public class Island {
         for (Mission mission : IridiumSkyblock.getMissions().missions) {
             missionLevels.putIfAbsent(mission.name, 1);
             if (mission.levels.get(missionLevels.get(mission.name)).type == MissionType.VALUE_INCREASE) {
-                setMission(mission.name, (int) (value.doubleValue() - startvalue));
+                setMission(mission.name, (int) (value.doubleValue() - startvalue - lastMissionValue));
             }
         }
         this.value += this.extravalue;
@@ -607,6 +617,7 @@ public class Island {
         IslandWorthCalculatedEvent islandWorthCalculatedEvent = new IslandWorthCalculatedEvent(this, this.value);
         Bukkit.getPluginManager().callEvent(islandWorthCalculatedEvent);
         this.value = islandWorthCalculatedEvent.getIslandWorth();
+        IslandDataManager.save(this, true);
     }
 
     public void addWarp(Player player, Location location, String name, String password) {
@@ -688,11 +699,12 @@ public class Island {
         if (biome == null) biome = IridiumSkyblock.getConfiguration().defaultBiome;
         if (valuableBlocks == null) valuableBlocks = new ConcurrentHashMap<>();
         if (spawners == null) spawners = new ConcurrentHashMap<>();
+        if (stackedBlocks == null) stackedBlocks = new ConcurrentHashMap<>();
         if (members == null) {
             members = new HashSet<>();
             members.add(owner);
         }
-        this.playersOnIsland = new ArrayList<>();
+        this.playersOnIsland = new HashSet<>();
         this.lastPlayerCaching = 0L;
         upgradeGUI = new UpgradeGUI(this);
         boosterGUI = new BoosterGUI(this);
@@ -738,6 +750,7 @@ public class Island {
             }};
         }
         Bukkit.getScheduler().runTaskLater(IridiumSkyblock.getInstance(), (Runnable) this::sendBorder, 20);
+        Bukkit.getScheduler().runTaskLater(IridiumSkyblock.getInstance(), (Runnable) this::sendHomograms, 20);
     }
 
     public long canGenerate() {
@@ -762,7 +775,7 @@ public class Island {
         //Reset island home
         for (Schematics.FakeSchematic schematic : IridiumSkyblock.getSchematics().schematics) {
             if (!schematic.name.equals(this.schematic)) continue;
-            home = new Location(IridiumSkyblock.getIslandManager().getWorld(), getCenter().getX() + schematic.x, schematic.y, getCenter().getZ() + schematic.z);
+            home = new Location(IslandManager.getWorld(), getCenter().getX() + schematic.x, schematic.y, getCenter().getZ() + schematic.z);
             this.setBiome(schematic.biome);
         }
     }
@@ -778,13 +791,14 @@ public class Island {
     }
 
     private void pasteSchematic() {
+        stackedBlocks.clear();
         for (Schematics.FakeSchematic fakeSchematic : IridiumSkyblock.getSchematics().schematics) {
             if (!fakeSchematic.name.equals(this.schematic)) continue;
             IridiumSkyblock.worldEdit.paste(new File(IridiumSkyblock.schematicFolder, schematic), getCenter().clone().add(fakeSchematic.xOffset, fakeSchematic.yOffset, fakeSchematic.zOffset), this);
             Location center = getCenter().clone();
             if (IridiumSkyblock.getConfiguration().netherIslands) {
-                center.setWorld(IridiumSkyblock.getIslandManager().getNetherWorld());
-                IridiumSkyblock.worldEdit.paste(new File(IridiumSkyblock.schematicFolder, netherschematic), center.clone().add(fakeSchematic.xOffset, fakeSchematic.yOffset, fakeSchematic.zOffset), this);
+                center.setWorld(IslandManager.getNetherWorld());
+                IridiumSkyblock.worldEdit.paste(new File(IridiumSkyblock.schematicFolder, netherschematic), center.clone().add(fakeSchematic.xNetherOffset, fakeSchematic.yNetherOffset, fakeSchematic.zNetherOffset), this);
             }
         }
     }
@@ -794,8 +808,32 @@ public class Island {
             for (String player : members) {
                 User user = User.getUser(player);
                 Player p = Bukkit.getPlayer(user.name);
-                if (p != null) p.getInventory().clear();
+                if (p != null) {
+                    p.getInventory().clear();
+                    if (IridiumSkyblock.getConfiguration().clearEnderChests) p.getEnderChest().clear();
+                }
             }
+        }
+    }
+
+    public void sendHomograms(Player player) {
+        World world = player.getWorld();
+        User user = User.getUser(player);
+        for (Object object : user.getHolograms()) {
+            IridiumSkyblock.nms.removeHologram(player, object);
+        }
+        user.clearHolograms();
+        for (Location location : stackedBlocks.keySet()) {
+            if (location.getWorld() != world) continue;
+            Block block = location.getBlock();
+            int amount = stackedBlocks.get(location);
+            IridiumSkyblock.nms.sendHologram(player, block.getLocation().add(0.5, -0.5, 0.5), Utils.processMultiplePlaceholders(IridiumSkyblock.getMessages().stackedBlocksHologram, Arrays.asList(new Utils.Placeholder("amount", amount + ""), new Utils.Placeholder("block", XMaterial.matchXMaterial(block.getType()).toString()))));
+        }
+    }
+
+    public void sendHomograms() {
+        for (Player player : getPlayersOnIsland()) {
+            sendHomograms(player);
         }
     }
 
@@ -843,10 +881,8 @@ public class Island {
     }
 
     public void teleportNetherHome(Player p) {
-        if (getNetherhome() == null) {
-            netherhome = center;
-            netherhome.setWorld(IridiumSkyblock.getIslandManager().getNetherWorld());
-        }
+        Location netherhome = getCenter().clone();
+        netherhome.setWorld(IslandManager.getNetherWorld());
         if (User.getUser(p).teleportingHome) {
             return;
         }
@@ -884,10 +920,9 @@ public class Island {
             sendBorder(p);
         } else {
 
-            Location loc = Utils.getNewHome(this, this.netherhome);
+            Location loc = Utils.getNewHome(this, netherhome);
             if (loc != null) {
-                this.netherhome = loc;
-                p.teleport(this.netherhome);
+                p.teleport(netherhome);
                 sendBorder(p);
             } else {
                 User.getUser(p).teleportingHome = true;
@@ -922,9 +957,8 @@ public class Island {
         }
         killEntities();
         deleteBlocks();
-        final IslandManager islandManager = IridiumSkyblock.getIslandManager();
         for (int id : coop) {
-            islandManager.getIslandViaId(id).coop.remove(getId());
+            IslandManager.getIslandViaId(id).coop.remove(getId());
         }
         coop = null;
         hideBorder();
@@ -934,7 +968,7 @@ public class Island {
         this.members = null;
         this.center = null;
         this.home = null;
-        islandManager.removeIsland(this);
+        IslandManager.removeIsland(this);
         this.id = 0;
         IridiumSkyblock.getInstance().saveConfigs();
         Bukkit.getScheduler().cancelTask(boosterid);
@@ -954,11 +988,13 @@ public class Island {
     public void removeVote(User user) {
         if (votes == null) votes = new HashSet<>();
         votes.remove(user.player);
+        IslandDataManager.save(this, true);
     }
 
     public void addVote(User user) {
         if (votes == null) votes = new HashSet<>();
         votes.add(user.player);
+        IslandDataManager.save(this, true);
     }
 
     public boolean hasVoted(User user) {
@@ -1004,7 +1040,7 @@ public class Island {
                 BaseComponent[] components = TextComponent.fromLegacyText(Utils.color(IridiumSkyblock.getMessages().coopInvite.replace("%player%", User.getUser(island.getOwner()).name).replace("%prefix%", IridiumSkyblock.getConfiguration().prefix)));
 
                 ClickEvent clickEvent = new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/is coop " + User.getUser(island.getOwner()).name);
-                HoverEvent hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("Click to coop players island!").create());
+                HoverEvent hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(IridiumSkyblock.getMessages().coopHoverMessage).create());
                 for (BaseComponent component : components) {
                     component.setClickEvent(clickEvent);
                     component.setHoverEvent(hoverEvent);
@@ -1059,7 +1095,7 @@ public class Island {
         }
     }
 
-    public List<Player> getPlayersOnIsland() {
+    public Set<Player> getPlayersOnIsland() {
         if (System.currentTimeMillis() >= lastPlayerCaching + (IridiumSkyblock.getConfiguration().playersOnIslandRefreshTime * 1000L)) {
             reloadPlayersOnIsland();
         }
@@ -1084,9 +1120,7 @@ public class Island {
             player.teleport(essentialsSpawn.getSpawn(essentials.getUser(player).getGroup()));
         } else {
             World world = Bukkit.getWorld(IridiumSkyblock.getConfiguration().worldSpawn);
-            if (world == null) {
-                world = Bukkit.getWorlds().get(0);
-            }
+            if (world == null) world = Bukkit.getWorlds().get(0);
             player.teleport(world.getSpawnLocation());
         }
         playersOnIsland.remove(player);
@@ -1094,14 +1128,19 @@ public class Island {
 
     public void setBiome(XBiome biome) {
         this.biome = biome;
-        final World world = IridiumSkyblock.getIslandManager().getWorld();
-        biome.setBiome(getPos1(), getPos2()).thenRunAsync(() -> {
+        final World world = IslandManager.getWorld();
+        final List<Chunk> chunks = new ArrayList<Chunk>() {{
             for (int X = getPos1().getChunk().getX(); X <= getPos2().getChunk().getX(); X++) {
                 for (int Z = getPos1().getChunk().getZ(); Z <= getPos2().getChunk().getZ(); Z++) {
-                    for (Player p : world.getPlayers()) {
-                        if (p.getLocation().getWorld() == world) {
-                            IridiumSkyblock.nms.sendChunk(p, world.getChunkAt(X, Z));
-                        }
+                    add(world.getChunkAt(X, Z));
+                }
+            }
+        }};
+        biome.setBiome(getPos1(), getPos2()).thenRunAsync(() -> {
+            for (Chunk c : chunks) {
+                for (Player p : world.getPlayers()) {
+                    if (p.getLocation().getWorld() == world) {
+                        IridiumSkyblock.nms.sendChunk(p, c);
                     }
                 }
             }
@@ -1111,7 +1150,7 @@ public class Island {
     public void setNetherBiome(XBiome biome) {
         if (!IridiumSkyblock.getConfiguration().netherIslands) return;
         this.netherBiome = biome;
-        final World world = IridiumSkyblock.getIslandManager().getNetherWorld();
+        final World world = IslandManager.getNetherWorld();
         Location pos1 = getPos1();
         Location pos2 = getPos2();
         pos1.setWorld(world);
@@ -1133,8 +1172,8 @@ public class Island {
         clearInventories();
         valuableBlocks.clear();
         calculateIslandValue();
-        final World world = IridiumSkyblock.getIslandManager().getWorld();
-        final World nether = IridiumSkyblock.getIslandManager().getNetherWorld();
+        final World world = IslandManager.getWorld();
+        final World nether = IslandManager.getNetherWorld();
         for (int X = getPos1().getBlockX(); X <= getPos2().getBlockX(); X++) {
             for (int Y = 0; Y <= 255; Y++) {
                 for (int Z = getPos1().getBlockZ(); Z <= getPos2().getBlockZ(); Z++) {
@@ -1154,16 +1193,16 @@ public class Island {
     }
 
     public void killEntities() {
-        for (Entity entity : IridiumSkyblock.getIslandManager().getWorld().getNearbyEntities(getCenter(), IridiumSkyblock.getUpgrades().sizeUpgrade.upgrades.get(sizeLevel).size / 2.00, 255, IridiumSkyblock.getUpgrades().sizeUpgrade.upgrades.get(sizeLevel).size / 2.00)) {
+        for (Entity entity : IslandManager.getWorld().getNearbyEntities(getCenter(), IridiumSkyblock.getUpgrades().sizeUpgrade.upgrades.get(sizeLevel).size / 2.00, 255, IridiumSkyblock.getUpgrades().sizeUpgrade.upgrades.get(sizeLevel).size / 2.00)) {
             if (!entity.getType().equals(EntityType.PLAYER)) {
                 entity.remove();
             }
         }
         if (IridiumSkyblock.getConfiguration().netherIslands) {
             Location netherCenter = getCenter().clone();
-            netherCenter.setWorld(IridiumSkyblock.getIslandManager().getNetherWorld());
+            netherCenter.setWorld(IslandManager.getNetherWorld());
 
-            for (Entity entity : IridiumSkyblock.getIslandManager().getNetherWorld().getNearbyEntities(netherCenter, IridiumSkyblock.getUpgrades().sizeUpgrade.upgrades.get(sizeLevel).size / 2.00, 255, IridiumSkyblock.getUpgrades().sizeUpgrade.upgrades.get(sizeLevel).size / 2.00)) {
+            for (Entity entity : IslandManager.getNetherWorld().getNearbyEntities(netherCenter, IridiumSkyblock.getUpgrades().sizeUpgrade.upgrades.get(sizeLevel).size / 2.00, 255, IridiumSkyblock.getUpgrades().sizeUpgrade.upgrades.get(sizeLevel).size / 2.00)) {
                 if (!entity.getType().equals(EntityType.PLAYER)) {
                     entity.remove();
                 }
@@ -1181,10 +1220,8 @@ public class Island {
 
 
     public Location getNetherhome() {
-        if (netherhome == null) {
-            netherhome = getHome().clone();
-            netherhome.setWorld(IridiumSkyblock.getIslandManager().getNetherWorld());
-        }
+        Location netherhome = getCenter().clone();
+        netherhome.setWorld(IslandManager.getNetherWorld());
         return netherhome;
     }
 
@@ -1239,5 +1276,9 @@ public class Island {
 
     public String getFormattedCrystals() {
         return Utils.NumberFormatter.format(crystals);
+    }
+
+    public void save(boolean async) {
+        IslandManager.save(this, async);
     }
 }
