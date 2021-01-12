@@ -11,7 +11,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class Config {
-    public String prefix = "&b&lIridiumSkyblock &8»";
+    public String prefix = "&b&lBomDasIridiumSkyblock &8»";
     public String worldName = "IridiumSkyblock";
     public String netherWorldName = worldName + "_nether";
     public String chatRankPlaceholder = "[ISLAND_RANK]";
